@@ -43,3 +43,11 @@ can estimate them from our perspective.
 5. Probing a point far away is practically impossible and almost meaningless
 because you are probably more interested in knowing what the point is, not
 where it is located.
+
+## Usage
+You can try out a demo with pygame:
+
+    python3 demo.py
+
+The effect can be broken by reducing the darkness created by the `utils.py` file
+but it is recomended to have darkness in order to reduce calculations.

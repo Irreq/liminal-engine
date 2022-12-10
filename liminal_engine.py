@@ -20,8 +20,7 @@ TODO:
 """
 
 
-
-DEPTH = 5
+DEPTH = 10
 
 RELATIVE_NEIGHBORS = {
     (-1, -1): ((-1, -2), (-2, -1), (-2, -2)),
@@ -224,104 +223,3 @@ class LiminalEngine:
             if not new.exists(neighbor):
                 if is_close(new, self.nearby[neighbor], distance=1):
                     new.connect(self.nearby[neighbor])
-
-
-
-def test_engine():
-
-    import pygame
-
-    # initiate pygame and give permission
-    # to use pygame's functionality.
-    pygame.init()
-
-    # Create a start position at liminal (0, 0)
-    start = Node(0, 0)
-
-    start.data = "This is start position"
-
-    engine = LiminalEngine(start.pointer()) #, debug=True, mem=start)
-
-    pygame.init()
-    window = pygame.display.set_mode((1000, 800))
-    clock = pygame.time.Clock()
-
-    pygame.font.init() # you have to call this at the start, 
-                   # if you want to use this module.
-    my_font = pygame.font.SysFont('Comic Sans MS', 30)
-
-    size = 30
-
-    rect = pygame.Rect(0, 0, size, size)
-    rect.center = window.get_rect().center
-    vel = size
-
-    # Create 10 checkpoints
-    checkpoints = {i:None for i in range(0, 9+1)}
-
-    run = True
-    while run:
-        clock.tick(10)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                run = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    run = False
-
-                elif event.key == pygame.K_SPACE:
-                    engine.node = start.pointer()
-                    print("Warped home!")
-                    continue
-
-                num = event.key - 48
-
-                if 0<=num<=9:
-
-                    res = checkpoints[num]
-
-                    if res == None:
-                        checkpoints[num] = engine.node
-                        print(f"Saved checkpoint: {num} at liminal {engine.node.get_position()}")
-                    else:
-                        engine.node = checkpoints[num]
-                        print(f"Warped to checkpoint: {num} at liminal {engine.node.get_position()}")
-
-        keys = pygame.key.get_pressed()
-
-        dx = (keys[pygame.K_RIGHT] - keys[pygame.K_LEFT])
-        dy = (keys[pygame.K_DOWN] - keys[pygame.K_UP])
-
-        direction = (dx, dy)
-        
-        if direction != (0, 0):
-            engine.traverse(dx, dy)
-            window.fill(0)
-            engine.nearby = get_nearby(engine.node, DEPTH)
-            px, py = engine.node.get_position()
-            engine.rel_nearby = [(xi-px, yi-py) for (xi, yi) in engine.nearby]
-
-            for x, y in engine.rel_nearby:
-                nrect = pygame.Rect(0, 0, 20, 20)
-                nrect.center = window.get_rect().center
-                nrect.x += x*vel
-                nrect.y += y*vel
-                pygame.draw.rect(window, (190, 190, 190), nrect)
-
-            pygame.draw.circle(window,(255, 0, 0),(rect.center),size/2)
-
-            text_surface = my_font.render(f'Liminal: {engine.node.get_position()}', False, (0, 255, 0))
-
-            # This creates a new surface with text already drawn onto it. At the end you can just blit the text surface onto your main screen.
-
-            window.blit(text_surface, (0,0))
-
-            pygame.display.flip()
-
-    pygame.quit()
-    exit()
-
-
-if __name__ == "__main__":
-
-    test_engine()
