@@ -1,7 +1,9 @@
 # liminal-engine
 
 Liminal space engine. It is essentially just
-walking around nodes in a partially linked data structure. 
+walking around nodes in a partially linked data structure.
+
+![Demo](https://github.com/Irreq/liminal-engine/blob/main/assets/demo.gif)
 
 What this means is that in our 2D way of thinking,
 if you are walking in this pattern:
