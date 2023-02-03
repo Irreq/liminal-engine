@@ -35,6 +35,9 @@ FRAME_RATE = 200 # 60 #240
 SPEED = 5 # How many tiles per second to travel
 RANGE = 6 # How far to render
 
+# Change this to get a cool effect ;)
+inverted = False
+
 
 POS_X = 0
 POS_Y = 0
@@ -105,6 +108,9 @@ def draw(engine: Engine, dx: int, dy: int):
         d = math.dist((0, 0), (x-xt-dx, y-yt+dy))
 
         a = 1 / 15
+
+        if inverted:
+            a *= -1
 
         diff = -a * d + 1
 
