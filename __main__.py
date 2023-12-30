@@ -165,6 +165,8 @@ class Application:
                     self.engine.insert()
                 elif event.key == pygame.K_v:  # Lock current Node
                     self.engine.untangle()
+                elif event.key == pygame.K_m:  # Prune
+                    self.engine.prune()
                 elif event.key == pygame.K_c:
                     global settings
 
@@ -395,6 +397,9 @@ class Writer(Application):
         order: int = self.engine.getOrder()
         DFSWithPath(self.engine.getNode(), order, world, ORIGO, ORIGO, [])
 
+        currentNode: Node = self.engine.getNode()
+        neighbors = list(currentNode.values())
+
         locks = []
         text = []
 
@@ -430,6 +435,14 @@ class Writer(Application):
                     size // 2,  # width * 3,
                 )
 
+            # if node in neighbors:
+            #     self.pygame.draw.circle(
+            #         self.window,
+            #         RED,  # LOCKED_COLOR,
+            #         currentPixelPosition,
+            #         size // 8,  # width * 3,
+            #     )
+
             if child != parent and node in path:
                 self.pygame.draw.line(
                     self.window,
@@ -445,7 +458,7 @@ class Writer(Application):
             # data: Any = node.getData()
             # if data is not None:
             #     text.append((data, currentPixelPosition))
-            text.append((node.getId(), currentPixelPosition))
+            # text.append((node.getId(), currentPixelPosition))
 
         for pos in locks:
             self.pygame.draw.circle(

@@ -469,6 +469,51 @@ def DFSWithCallback(
     return False
 
 
+def DFSWithCallbackAndPosition(
+    node: Node,
+    position: Position,
+    territory: NodeState,
+    visited: list[Node],
+    f: Callable[..., bool],
+    depth: int,
+) -> bool:
+    """Perform DFS and apply a function f(node) for each Node encountered and
+    stop at max depth or when callback is satisfied
+
+    WARNING: You must clean up all nodes in visited
+
+    :param node: Current Node
+    :param territory: which territory current node shall belong to
+    :param visited: aldready visited Nodes
+    :param f: Callback for Node
+    :param depth: Current depth
+    :return: if found
+    """
+    if f(node, position):
+        return True
+    if depth == 0:
+        return False
+
+    node.state = territory
+    visited.append(node)
+
+    for direction, neighbor in node.items():
+        # if neighbor.state not in (NodeState.IGNORE, NodeState.VISITED, territory):
+        if (neighbor.state != NodeState.IGNORE) and (neighbor.state != territory):
+            found: bool = DFSWithCallbackAndPosition(
+                neighbor,
+                deltaPosition(direction, position),
+                territory,
+                visited,
+                f,
+                depth - 1,
+            )
+            if found:
+                return True
+
+    return False
+
+
 Grid = Dict[Position, Tuple[int, Node]]
 World = Dict[int, List[Tuple[Position, Node]]]
 
@@ -649,6 +694,32 @@ def countCollisions(startNode: Node) -> int:
 
 
 class Engine:
+    """Engine for relative Nodes
+
+    This engine allows the user to:
+
+    * Traverse
+    * Search Data
+    * Add/Insert
+    * Remove/Delete
+    * Store Data
+    * Shortest route to Data
+    * Rotate + fold network
+    * Relative -> 2D untangling
+
+    Several optimizations are enabled to work efficiently. The engine prunes
+    redundant Nodes when encountered. This behaviour can be prevented by manually
+    locking Nodes.
+
+
+    :param mode: The mode for the engine to operate in
+    :param order: operation depth
+    :param node: current Node
+    :param start: initial Node
+    :param previous: previous Node
+    :param grid: 2D representation
+    """
+
     def __init__(self, mode: EngineMode, order: int):
         assert isinstance(
             mode, EngineMode
@@ -910,7 +981,7 @@ class Engine:
             return False
 
         if not bend(self.node, self.previous, rotation):
-            return False
+            # return False
             rotateAll(self.node, rotation)
 
         self.update()
@@ -1069,14 +1140,47 @@ class Engine:
 
         return True
 
+    def prune(self) -> None:
+        """Prune network by connecting all nodes that may be connected"""
+        if self.mode == EngineMode.READ_ONLY:
+            return
 
-def connectNearby(node: Node, grid: Grid, position: Position) -> None:
+        def f(other: Node, position: Position) -> bool:
+            connectNearby(other, self.grid, position)
+            return False
+
+        visited: List[Node] = []
+        DFSWithCallbackAndPosition(
+            self.node, ORIGO, NodeState.VISITED, visited, f, INFINITY
+        )
+        cleanVisited(visited)
+
+        # def f2(other: Node) -> bool:
+        #     if other is self.node:
+        #         return False
+        #     if (
+        #         other.canRemove()
+        #         and not isArticulationPoint(other)
+        #         and not other.isLeaf()
+        #     ):
+        #         other.remove()
+        #
+        #     return False
+        #
+        # visited: List[Node] = []
+        # DFSWithCallback(self.node, NodeState.VISITED, visited, f2, INFINITY)
+        # cleanVisited(visited)
+        self.update()
+
+
+def connectNearby(node: Node, grid: Grid, position: Position) -> bool:
     """Checks for all potential neighbors to Node and tries to connect them.
 
     :param node: Current Node to extend
     :param grid: the grid
     :param position: Current Position
     """
+    newConnections: bool = False
     for direction in Direction:
         if node[direction] is None:
             newPos: Position = deltaPosition(direction, position)
@@ -1084,8 +1188,11 @@ def connectNearby(node: Node, grid: Grid, position: Position) -> None:
                 otherNode: Node = grid[newPos][1]
                 if node.canConnect(direction, otherNode):
                     node.connect(direction, otherNode)
+                    newConnections = True
                 else:
                     node.log("Could not connect")
+
+    return newConnections
 
 
 def traverse(node: Node, direction: Direction, grid: Grid, mode: EngineMode) -> Node:
@@ -1104,7 +1211,7 @@ def traverse(node: Node, direction: Direction, grid: Grid, mode: EngineMode) -> 
     # Will add a new node in any case, except immediate neighbor exist
     if mode == EngineMode.LIMINAL:
         neighbor: Node | None = node[direction]
-        if neighbor == None:
+        if neighbor is None:
             neighbor = Node()
             node.connect(direction, neighbor)
 
