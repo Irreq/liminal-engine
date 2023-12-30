@@ -1,12 +1,13 @@
 # Static analysis
 from __future__ import annotations
-from typing import Generator, Callable
-
+from typing import Generator, Callable, Dict, Tuple, Any, List, Set
 from queue import Queue
 from enum import Enum
 
 import datetime  # Logging
 import pickle
+
+import sys
 
 # Local package for Direction and Position logic
 from direction import (
@@ -14,17 +15,15 @@ from direction import (
     Position,
     Direction,
     ORIGO,
-    deltaPos,
+    deltaPosition,
     oppositeDirection,
     NEARBY_DIRECTION_MAP,
     ALL_DIRECTIONS,
 )
 
+Data = Any
 
-MAX_ORDER: int = 13  # How far the nodes can be seen
-INFINITY: int = 1 << 32  # Just a big number
-
-assert MAX_ORDER < INFINITY, "You will not be able to visit all nodes"
+INFINITY: int = sys.maxsize  # Just a big number
 
 
 class EngineMode(Enum):
@@ -44,16 +43,13 @@ class NodeState(Enum):
     IGNORE = 3
 
 
-def cleanVisited(visited: list[Node]) -> None:
+def cleanVisited(visited: List[Node]) -> None:
     """Reset all Nodes
 
     :param visited: list of Nodes
     """
     for node in visited:
         node.state = NodeState.NOT_VISITED
-
-
-Data = object
 
 
 class Node:
@@ -81,7 +77,7 @@ class Node:
         self.state: NodeState = NodeState.NOT_VISITED
 
         # Protected
-        self._neighbors: list[Node | None] = [None] * ALL_DIRECTIONS
+        self._neighbors: List[Node | None] = [None] * ALL_DIRECTIONS
 
         # Final Static, DO NOT MODIFY
         self._index: int = Node.var
@@ -122,11 +118,11 @@ class Node:
         :return: if inside Node
         """
         if isinstance(item, Direction):
-            return self[item] != None
+            return self[item] is not None
         elif isinstance(item, Node):
             return item in self._neighbors
         elif isinstance(item, Data):
-            return item is self.data
+            return item is self._data
         else:
             return False
 
@@ -168,7 +164,13 @@ class Node:
 
         :return: string
         """
-        f = lambda direction: direction if (self[direction] is not None) else " " * 12
+
+        def f(direction: Direction) -> str:
+            if self[direction] is not None:
+                return str(direction)
+            else:
+                return " " * 12
+
         out = f"""
             {f(Direction.NORTH)} 
         
@@ -215,7 +217,7 @@ class Node:
             if neighbor is not None:
                 yield neighbor
 
-    def items(self) -> Generator[tuple[Direction, Node], None, None]:
+    def items(self) -> Generator[Tuple[Direction, Node], None, None]:
         """Get both direction and neighbor from all neighbors to node
 
         Usage:
@@ -280,19 +282,19 @@ class Node:
         if rotation == 0:
             self.log("Will not rotate when not needed")
             return
-        new_neighbors: list[Node | None] = [None] * ALL_DIRECTIONS
+        new_neighbors: List[Node | None] = [None] * ALL_DIRECTIONS
 
         for i, neighbor in enumerate(self._neighbors):
             new_neighbors[(i + rotation) % ALL_DIRECTIONS] = neighbor
 
         self._neighbors = new_neighbors
 
-    def remove(self) -> dict[Direction, Node]:
+    def remove(self) -> Dict[Direction, Node]:
         """Remove all references to Node
 
         :return: dictionary of previous node constallaion
         """
-        neighbors: dict[Direction, Node] = dict(self.items())
+        neighbors: Dict[Direction, Node] = dict(self.items())
         for direction, neighbor in neighbors.items():
             self.disconnect(direction, neighbor)
 
@@ -359,7 +361,10 @@ class Node:
                 return direction
 
 
-def isArticulationPoint(node: Node) -> bool:
+# ---- Complex functions ----
+
+
+def isArticulationPoint(node: Node, depth: int = INFINITY) -> bool:
     """Checks if node is articulation point. This is done by computing if each
     neighbor is able to traverse to all other neighbors without visiting the
     current node. If this is true, the current node is redundant and can be
@@ -373,9 +378,9 @@ def isArticulationPoint(node: Node) -> bool:
     :param node: current Node
     :return: if its an articulation point
     """
-    neighbors: set[Node] = set(node.values())
+    neighbors: Set[Node] = set(node.values())
     done: bool = False
-    cache: list[Node] = []
+    cache: List[Node] = []
     node.state = NodeState.IGNORE
 
     while len(neighbors) > 0 and not done:
@@ -392,14 +397,15 @@ def isArticulationPoint(node: Node) -> bool:
             if neighbor.state == NodeState.VISITED:
                 continue
             if cache != []:
-                recache: list[Node] = []
+                recache: List[Node] = []
 
                 # Search for neighbors until a VISITED node is found
-                result = DFSwithFunction(
+                result = DFSWithCallback(
                     neighbor,
                     NodeState.TMP_VISITED,
                     recache,
                     lambda n: n.state == NodeState.VISITED,
+                    depth,
                 )
 
                 # Add all visited Nodes to cache
@@ -412,8 +418,8 @@ def isArticulationPoint(node: Node) -> bool:
 
             else:
                 # A complete search until start is found
-                result = DFSwithFunction(
-                    neighbor, NodeState.VISITED, cache, lambda n: n == start
+                result = DFSWithCallback(
+                    neighbor, NodeState.VISITED, cache, lambda n: n == start, depth
                 )
 
                 if not result:
@@ -426,12 +432,12 @@ def isArticulationPoint(node: Node) -> bool:
     return not done
 
 
-def DFSwithFunction(
+def DFSWithCallback(
     node: Node,
     territory: NodeState,
     visited: list[Node],
     f: Callable[..., bool],
-    depth: int = MAX_ORDER,
+    depth: int,
 ) -> bool:
     """Perform DFS and apply a function f(node) for each Node encountered and
     stop at max depth or when callback is satisfied
@@ -447,7 +453,7 @@ def DFSwithFunction(
     """
     if f(node):
         return True
-    if depth < 0:
+    if depth == 0:
         return False
 
     node.state = territory
@@ -456,15 +462,51 @@ def DFSwithFunction(
     for neighbor in node.values():
         # if neighbor.state not in (NodeState.IGNORE, NodeState.VISITED, territory):
         if (neighbor.state != NodeState.IGNORE) and (neighbor.state != territory):
-            found: bool = DFSwithFunction(neighbor, territory, visited, f, depth - 1)
+            found: bool = DFSWithCallback(neighbor, territory, visited, f, depth - 1)
             if found:
                 return True
 
     return False
 
 
-Grid = dict[Position, tuple[int, Node]]
-World = dict[int, list[tuple[Position, Node]]]
+Grid = Dict[Position, Tuple[int, Node]]
+World = Dict[int, List[Tuple[Position, Node]]]
+
+
+def DFSWithPath(
+    node: Node,
+    n: int,
+    place: Dict[Position, Tuple[int, Node, Position]],
+    previousPosition: Position,
+    currentPosition: Position,
+    visited: List[Node],
+) -> None:
+    """Visit Nodes until maximum depth is reached, and save which position you
+    came from to build up a path on how to get to each node
+
+    :param node: Start Node
+    :param n: depth
+    :param place: the world
+    :param previousPosition: where you came from
+    :param currentPosition: where you are
+    :param visited: all visited Nodes
+    """
+    if currentPosition not in place or n > place[currentPosition][0]:
+        place[currentPosition] = (n, node, previousPosition)
+
+    if n == 0:
+        return
+
+    for direction, neighbor in node.items():
+        if neighbor not in visited:
+            DFSWithPath(
+                neighbor,
+                n - 1,
+                place,
+                currentPosition,
+                deltaPosition(direction, currentPosition),
+                [node] + visited,
+            )
 
 
 def relativeExplorer(
@@ -472,8 +514,8 @@ def relativeExplorer(
     n: int,
     place: Grid,
     position: Position,
-    visited: list[Node],
-):
+    visited: List[Node],
+) -> None:
     """Explore the network similar to DFS but with limits
     and the added functionality to map the network to Eucleidian space.
 
@@ -487,7 +529,7 @@ def relativeExplorer(
         place[position] = (n, node)
 
     # Maximum depth reached
-    if n < 0:
+    if n == 0:
         return
 
     for direction, neighbor in node.items():
@@ -498,7 +540,7 @@ def relativeExplorer(
                 neighbor,
                 n - 1,
                 place,
-                deltaPos(direction, position),
+                deltaPosition(direction, position),
                 visited,  # Maybe optimized for local search of recent?
             )
 
@@ -514,8 +556,8 @@ def rotateAll(node: Node, rotation: Rotation) -> None:
         other.rotate(rotation)
         return False
 
-    visited: list[Node] = []
-    DFSwithFunction(node, NodeState.VISITED, visited, f, INFINITY)
+    visited: List[Node] = []
+    DFSWithCallback(node, NodeState.VISITED, visited, f, INFINITY)
     cleanVisited(visited)
 
 
@@ -533,6 +575,7 @@ def bend(node: Node, pivot: Node, rotation: Rotation) -> bool:
         not node.isLeaf()
         and pivot != node
         and pivot in node  # If pivot is neighbor
+        and node in pivot  # --||--
         and not node.isLocked()
         and not isArticulationPoint(node)
     ):
@@ -540,12 +583,16 @@ def bend(node: Node, pivot: Node, rotation: Rotation) -> bool:
 
     # Will always be a Direction
     previousDirection: Direction | None = node.directionTo(pivot)
-    if previousDirection == None:
+    if previousDirection is None:
         raise ValueError("Previous direction is undefined")
 
+    # Determine what object will take pivots position
     potential: Direction = Direction.rotate(previousDirection, -rotation)
 
+    # Since pivot stays on the same place, any other than None or pivot cannot
+    # take its place
     if node[potential] in (pivot, None):
+        # All nodes except those behind (and) pivot will be rotated
         pivot.state = NodeState.IGNORE
         rotateAll(node, rotation)
         pivot.state = NodeState.NOT_VISITED
@@ -556,28 +603,62 @@ def bend(node: Node, pivot: Node, rotation: Rotation) -> bool:
         node[previousDirection] = pivot
         return True
 
-    else:
+    else:  # Could not bend
         return False
 
 
+def countCollisions(startNode: Node) -> int:
+    def f(
+        node: Node,
+        position: Position,
+        place: Dict[Node, List[Position]],
+        visited: List[Node],
+    ):
+        if node not in place:
+            place[node] = [position]
+        elif position not in place[node]:  # Node exists in multiple places. Bad...
+            place[node].append(position)
+            print("I exists on multiple places...")
+        else:
+            return
+
+        for direction, neighbor in node.items():
+            if neighbor not in visited:
+                f(
+                    neighbor,
+                    deltaPosition(direction, position),
+                    place,
+                    [neighbor] + visited,
+                )
+
+    world = {}
+    f(startNode, ORIGO, world, [])
+
+    all_positions = set()
+
+    collisions: int = 0
+
+    for positions in world.values():
+        for position in positions:
+            if position in all_positions:
+                collisions += 1
+            else:
+                all_positions.add(position)
+
+    return collisions
+
+
 class Engine:
-    """Interface to the network of Nodes
+    def __init__(self, mode: EngineMode, order: int):
+        assert isinstance(
+            mode, EngineMode
+        ), "You must have a valid EngineMode, not: " + str(mode)
 
-    :param mode: [TODO:attribute]
-    :param order: [TODO:attribute]
-    :param node: [TODO:attribute]
-    :param start: [TODO:attribute]
-    :param previous: [TODO:attribute]
-    :param grid: [TODO:attribute]
-    :param world: [TODO:attribute]
-    :param path: [TODO:attribute]
-    :param mode: [TODO:attribute]
-    :param previous: [TODO:attribute]
-    :param node: [TODO:attribute]
-    :param world: [TODO:attribute]
-    """
+        assert isinstance(
+            order, int
+        ), "The visibility must be a posivive integer, not: " + str(order)
+        assert 0 <= order, "Order must be a posivite integer, not: " + str(order)
 
-    def __init__(self, mode: EngineMode = EngineMode.NORMAL, order: int = MAX_ORDER):
         self.mode: EngineMode = mode
         self.order: int = order
         self.setOrder(order)
@@ -592,11 +673,11 @@ class Engine:
         # World stuff
         self.grid: Grid = {}
         self.world: World = {}
-        self.path: list[Node] = []
+        self.path: List[Node] = []
 
         self.update()
 
-    def search(self, node: Node) -> list[Node]:
+    def search(self, node: Node) -> List[Node]:
         """Search for a Node in the network
 
         WARNING if Node is not present in the Engine, an empty list will be
@@ -608,8 +689,8 @@ class Engine:
         q = Queue()
         q.put(self.node)
 
-        visited: list[Node] = []
-        pathMap: dict[Node, Node] = {}
+        visited: List[Node] = []
+        pathMap: Dict[Node, Node] = {}
 
         while not q.empty():
             other: Node = q.get()
@@ -625,7 +706,7 @@ class Engine:
                     pathMap[neighbor] = other
 
         cleanVisited(visited)
-        path: list[Node] = []
+        path: List[Node] = []
 
         other: Node = node
         i = 0
@@ -638,6 +719,8 @@ class Engine:
 
             path.append(other)
             other = pathMap[other]
+            if other == self.node:
+                break
             i += 1
 
         return path
@@ -661,7 +744,7 @@ class Engine:
             print("Changing order")
             self.update()
 
-    def getPath(self) -> list[Node]:
+    def getPath(self) -> List[Node]:
         return self.path
 
     def setMode(self, mode: EngineMode) -> None:
@@ -712,7 +795,7 @@ class Engine:
         :param direction: target Direction
         :return: Direction generator
         """
-        near: tuple[Direction, Direction] = NEARBY_DIRECTION_MAP[direction]
+        near: Tuple[Direction, Direction] = NEARBY_DIRECTION_MAP[direction]
         for possibleDirection in self.node.keys():
             if possibleDirection in near:
                 yield possibleDirection
@@ -799,7 +882,7 @@ class Engine:
         :return: Grid of the world
         """
         self.grid.clear()
-        all_visited: list[Node] = []
+        all_visited: List[Node] = []
         relativeExplorer(self.node, self.order, self.grid, ORIGO, all_visited)
 
         cleanVisited(all_visited)
@@ -827,6 +910,7 @@ class Engine:
             return False
 
         if not bend(self.node, self.previous, rotation):
+            return False
             rotateAll(self.node, rotation)
 
         self.update()
@@ -844,9 +928,12 @@ class Engine:
         :return: if optimized
         """
 
-        def rec(node: Node, parent: Node, visited: list[Node]):
+        if self.mode == EngineMode.READ_ONLY:
+            return False
+
+        def rec(node: Node, parent: Node, visited: List[Node]):
             visited.append(node)
-            flattened = False
+            flattened: bool = False
 
             for neighbor in node.values():
                 if neighbor not in visited:
@@ -861,23 +948,126 @@ class Engine:
 
             n_neighbors: int = len(node)
 
-            if n_neighbors not in (0, 3):
+            if n_neighbors not in (0, ALL_DIRECTIONS - 1):
                 rotation: Rotation = -1
 
-                while node[parentDirection] == None and rotation < 2:
+                while (node[parentDirection] is None) and (rotation < 2):
                     if rotation != 0 and bend(node, parent, rotation):
                         flattened = True
                     rotation += 1
 
             return flattened
 
-        visited: list[Node] = [self.node]
-        flattened = rec(self.node, self.node, visited)
+        visited: List[Node] = []
+        flattened: bool = rec(self.node, self.node, visited)
         if flattened:
             print("Performed optimization")
             self.update()
 
         return flattened
+
+    def untangle(self) -> bool:
+        """Naive untanglement where backtracking is used together with DFS to
+        bend around the network until no further collisions are present. This
+        algorithm is not fully optimized but a POC that is actually able to
+        untangle some networks using trial and error. This algorithm is
+        destructive by rotating the network, but no Nodes are:
+
+        * Connected
+        * Disconnected
+        * Removed
+        * Added
+
+        Maybe the user wants to reconnect the network after the untanglement to
+        fix new neighbors and remove redundant nodes?
+
+        :return: status
+        """
+        if self.mode == EngineMode.READ_ONLY:
+            return False
+
+        collisions: int = countCollisions(self.node)  # This function costs a lot
+
+        if collisions == 0:
+            print("Nothing to untangle :)")
+            return False
+
+        def rec(node: Node, parent: Node, visited: List[Node], collisions: List[int]):
+            visited.append(node)
+            done: bool = False
+
+            for neighbor in node.values():
+                if neighbor not in visited:
+                    done = rec(neighbor, node, visited, collisions)
+                    if done:
+                        return True
+
+            if collisions[0] == 0:
+                return True
+
+            if node == parent:
+                return done
+            parentDirection: Direction | None = parent.directionTo(node)
+
+            if parentDirection is None:  # This happens in directed graphs
+                return done
+
+            n_neighbors: int = len(node)
+
+            if n_neighbors not in (0, ALL_DIRECTIONS - 1):
+                rotation: Rotation = -1
+
+                didUntangle = False
+                haveBend = False
+
+                while not didUntangle and (rotation < 2):
+                    if rotation != 0 and bend(node, parent, rotation):
+                        currentCollisions = countCollisions(node)
+                        haveBend = True
+
+                        if currentCollisions == 0:
+                            # Why is python so evil... why cant i modify global
+                            # collisions...
+
+                            collisions[0] -= collisions[0] - currentCollisions
+                            # print("FOUND DONE")
+                            return True  # Done
+                        elif currentCollisions < collisions[0]:
+                            didUntangle = True
+                            collisions[0] -= collisions[0] - currentCollisions
+                            # print("FOUND")
+
+                    rotation += 1
+
+                if haveBend and not didUntangle:
+                    bend(node, parent, -rotation)
+
+            return done
+
+        visited: List[Node] = []
+        # print(collisions)
+        collisionCount = [collisions]
+        flattened: bool = rec(self.node, self.node, visited, collisionCount)
+        # print(collisionCount[0])
+        if collisionCount[0] == 0:
+            print("Fully converted to absolute space!")
+
+        elif collisionCount[0] < collisions:
+            print("Making progress")
+
+        elif (
+            not flattened and collisionCount[0] > 0
+        ):  # This is bad, the system cannot convert to 2D
+            # space, it is up to the user to fix collisions. This required deletions
+            # of Nodes. I am not sure if this is a global error or if it can be
+            # mitigated by simply going to a different node
+            print(
+                "Absolute-space error. Cannot perform automatic untanglement. User intervention is required!"
+            )
+
+        self.update()
+
+        return True
 
 
 def connectNearby(node: Node, grid: Grid, position: Position) -> None:
@@ -889,11 +1079,11 @@ def connectNearby(node: Node, grid: Grid, position: Position) -> None:
     """
     for direction in Direction:
         if node[direction] is None:
-            newPos = deltaPos(direction, position)
+            newPos: Position = deltaPosition(direction, position)
             if newPos in grid:
-                other = grid[newPos][1]
-                if node.canConnect(direction, other):
-                    node.connect(direction, other)
+                otherNode: Node = grid[newPos][1]
+                if node.canConnect(direction, otherNode):
+                    node.connect(direction, otherNode)
                 else:
                     node.log("Could not connect")
 
@@ -909,11 +1099,11 @@ def traverse(node: Node, direction: Direction, grid: Grid, mode: EngineMode) -> 
     :return: Your new Node (or previous if Failure)
     """
 
-    position: Position = deltaPos(direction, ORIGO)
+    position: Position = deltaPosition(direction, ORIGO)
 
     # Will add a new node in any case, except immediate neighbor exist
     if mode == EngineMode.LIMINAL:
-        neighbor = node[direction]
+        neighbor: Node | None = node[direction]
         if neighbor == None:
             neighbor = Node()
             node.connect(direction, neighbor)
