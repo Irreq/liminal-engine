@@ -1,13 +1,13 @@
 # Static analysis
 from __future__ import annotations
-from typing import Callable
+from typing import Callable, Tuple, Dict
 
 
 from enum import Enum
 
 Rotation = int
 
-Position = tuple[int, int]
+Position = Tuple[int, int]
 # class Position:
 #     def __init__(self, x: int, y: int):
 #         self._x = x
@@ -46,7 +46,7 @@ if DIAGONAL:
         WEST = 6
         NORTH_WEST = 7
 
-    MOVEMENT_MAP: dict[Direction, Position] = {
+    MOVEMENT_MAP: Dict[Direction, Position] = {
         Direction.NORTH: (0, 1),
         Direction.NORTH_EAST: (1, 1),
         Direction.EAST: (1, 0),
@@ -57,7 +57,7 @@ if DIAGONAL:
         Direction.NORTH_WEST: (-1, 1),
     }
 
-    OPPOSITE_DIRECTION_MAP: dict[Direction, Direction] = {
+    OPPOSITE_DIRECTION_MAP: Dict[Direction, Direction] = {
         Direction.NORTH: Direction.SOUTH,
         Direction.NORTH_EAST: Direction.SOUTH_WEST,
         Direction.EAST: Direction.WEST,
@@ -68,7 +68,7 @@ if DIAGONAL:
         Direction.NORTH_WEST: Direction.SOUTH_EAST,
     }
 
-    NEARBY_DIRECTION_MAP: dict[Direction, tuple[Direction, Direction]] = {
+    NEARBY_DIRECTION_MAP: Dict[Direction, Tuple[Direction, Direction]] = {
         Direction.NORTH: (Direction.NORTH_WEST, Direction.NORTH_EAST),
         Direction.NORTH_EAST: (Direction.NORTH, Direction.EAST),
         Direction.EAST: (Direction.NORTH_EAST, Direction.SOUTH_EAST),
@@ -92,21 +92,21 @@ else:
         def rotate(direction: Direction, rotation: Rotation):
             return Direction((direction.value + rotation) % 4)
 
-    MOVEMENT_MAP: dict[Direction, Position] = {
+    MOVEMENT_MAP: Dict[Direction, Position] = {
         Direction.NORTH: (0, 1),
         Direction.EAST: (1, 0),
         Direction.SOUTH: (0, -1),
         Direction.WEST: (-1, 0),
     }
 
-    OPPOSITE_DIRECTION_MAP: dict[Direction, Direction] = {
+    OPPOSITE_DIRECTION_MAP: Dict[Direction, Direction] = {
         Direction.NORTH: Direction.SOUTH,
         Direction.EAST: Direction.WEST,
         Direction.SOUTH: Direction.NORTH,
         Direction.WEST: Direction.EAST,
     }
 
-    NEARBY_DIRECTION_MAP: dict[Direction, tuple[Direction, Direction]] = {
+    NEARBY_DIRECTION_MAP: Dict[Direction, Tuple[Direction, Direction]] = {
         Direction.NORTH: (Direction.WEST, Direction.EAST),
         Direction.EAST: (Direction.NORTH, Direction.SOUTH),
         Direction.SOUTH: (Direction.EAST, Direction.WEST),
@@ -114,16 +114,16 @@ else:
     }
 
 
-MOVEMENT_MAP_INVERTED: dict[Direction, Direction] = {
+MOVEMENT_MAP_INVERTED: Dict[Position, Direction] = {
     position: direction for direction, position in MOVEMENT_MAP.items()
 }
 
-NEARBY_DIRECTION_MAP_INVERTED: dict[tuple[Direction, Direction], Direction] = {
-    value: key for key, value in MOVEMENT_MAP.items()
+NEARBY_DIRECTION_MAP_INVERTED: Dict[Tuple[Direction, Direction], Direction] = {
+    value: key for key, value in NEARBY_DIRECTION_MAP.items()
 }
 
 
-ALL_DIRECTIONS: int = len(Direction)  # @brief All possible directions to move in
+ALL_DIRECTIONS: int = len(Direction)  # All possible directions to move in
 
 # Get the opposite direction to a Direction
 oppositeDirection: Callable[..., Direction] = lambda direction: OPPOSITE_DIRECTION_MAP[
@@ -131,7 +131,7 @@ oppositeDirection: Callable[..., Direction] = lambda direction: OPPOSITE_DIRECTI
 ]
 
 
-def deltaPos(direction: Direction, position: Position) -> Position:
+def deltaPosition(direction: Direction, position: Position) -> Position:
     """Compute a new Position based on a Direction
 
     Position + Direction = Direction'
