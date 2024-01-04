@@ -170,7 +170,7 @@ class Application:
                 elif event.key == pygame.K_c:
                     global settings
 
-                    settings = randomColorSettings(self.engine.getOrder() + 3)
+                    settings = randomColorSettings(self.engine.getDepth() + 3)
                     # settings["hueBase"] += 0.01
                     # settings["hueBase"] %= 1.0
 
@@ -251,7 +251,7 @@ class Application:
         # amount = 0
 
         if amount != 0:
-            self.engine.setOrder(amount)
+            self.engine.setDepth(amount)
             self.can_draw = True
             settings["colorCount"] = amount + 3
             self.colors = generate_color_map("monochromatic", settings)
@@ -332,7 +332,7 @@ class Application:
 class Writer(Application):
     def __init__(self, engine: Engine, width=100, height=10, fontname=None):
         super().__init__(engine)
-        settings["colorCount"] = engine.getOrder() + 3
+        settings["colorCount"] = engine.getDepth() + 3
         self.colors = generate_color_map("monochromatic", settings)
 
         # self.width = width
@@ -394,8 +394,8 @@ class Writer(Application):
 
         world: Dict[Position, Tuple[int, Node, Position]] = {}
 
-        order: int = self.engine.getOrder()
-        DFSWithPath(self.engine.getNode(), order, world, ORIGO, ORIGO, [])
+        depth: int = self.engine.getDepth()
+        DFSWithPath(self.engine.getNode(), depth, world, ORIGO, ORIGO, [])
 
         currentNode: Node = self.engine.getNode()
         neighbors = list(currentNode.values())
@@ -404,7 +404,7 @@ class Writer(Application):
         text = []
 
         size: int = self.size
-        # 0 <= n <= order
+        # 0 <= n <= depth
         for child, (n, node, parent) in world.items():
             (x, y) = child
             xc = x - kx
@@ -414,7 +414,7 @@ class Writer(Application):
             xp = x - kx
             yp = y - ky
 
-            ratio: float = (n + 1) / (order + 1)  # 0.0 < ratio <= 1.0
+            ratio: float = (n + 1) / (depth + 1)  # 0.0 < ratio <= 1.0
 
             if node in path and 0:
                 color = PATH_HOME_COLOR

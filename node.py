@@ -61,7 +61,7 @@ class Node:
     :param state: Can be set by other functions
     """
 
-    var: int = 0
+    var: int = 0  # Global do not modify
 
     def __init__(self, data: Data = None):
         """Node constructor where Data is optional
@@ -565,7 +565,7 @@ def relativeExplorer(
     and the added functionality to map the network to Eucleidian space.
 
     :param node: current Node to search
-    :param n: order of allowed concecutive movements
+    :param n: depth of allowed concecutive movements
     :param place: the grid to build up
     :param position: current Eucleidian position
     :param visited: already visited Nodes
@@ -713,26 +713,26 @@ class Engine:
 
 
     :param mode: The mode for the engine to operate in
-    :param order: operation depth
+    :param depth: operation depth
     :param node: current Node
     :param start: initial Node
     :param previous: previous Node
     :param grid: 2D representation
     """
 
-    def __init__(self, mode: EngineMode, order: int):
+    def __init__(self, mode: EngineMode, depth: int):
         assert isinstance(
             mode, EngineMode
         ), "You must have a valid EngineMode, not: " + str(mode)
 
         assert isinstance(
-            order, int
-        ), "The visibility must be a posivive integer, not: " + str(order)
-        assert 0 <= order, "Order must be a posivite integer, not: " + str(order)
+            depth, int
+        ), "The visibility must be a posivive integer, not: " + str(depth)
+        assert 0 <= depth, "depth must be a posivite integer, not: " + str(depth)
 
         self.mode: EngineMode = mode
-        self.order: int = order
-        self.setOrder(order)
+        self.depth: int = depth
+        self.setDepth(depth)
         self.setMode(mode)
 
         self.node: Node = Node()
@@ -755,7 +755,7 @@ class Engine:
         returned
 
         :param node: target Node
-        :return: ordered path to Node
+        :return: depthed path to Node
         """
         q = Queue()
         q.put(self.node)
@@ -796,23 +796,23 @@ class Engine:
 
         return path
 
-    def getOrder(self) -> int:
-        """Getter for order
+    def getDepth(self) -> int:
+        """Getter for depth
 
         :return: int
         """
-        return self.order
+        return self.depth
 
-    def setOrder(self, value: int) -> None:
-        """Setter for engine traversal order
+    def setDepth(self, value: int) -> None:
+        """Setter for engine traversal depth
 
         :param value: new positive integer
         """
         assert isinstance(value, int), "Invalid range type: " + str(value)
         assert value >= 0, "Invalid range: " + str(value)
-        if self.order != value:
-            self.order = value
-            print("Changing order")
+        if self.depth != value:
+            self.depth = value
+            print("Changing depth")
             self.update()
 
     def getPath(self) -> List[Node]:
@@ -911,7 +911,7 @@ class Engine:
         node: Node = Node()
         direction: Direction | None = self.previous.directionTo(self.node)
 
-        if direction == None:  # This should not happen!?
+        if direction is None:  # This should not happen!?
             raise ValueError("Previous node is not a neighbor")
 
         if self.node.isLeaf():
@@ -954,7 +954,7 @@ class Engine:
         """
         self.grid.clear()
         all_visited: List[Node] = []
-        relativeExplorer(self.node, self.order, self.grid, ORIGO, all_visited)
+        relativeExplorer(self.node, self.depth, self.grid, ORIGO, all_visited)
 
         cleanVisited(all_visited)
 
@@ -1090,6 +1090,28 @@ class Engine:
 
                 didUntangle = False
                 haveBend = False
+
+                # rotationCount: Rotation = 0
+                #
+                # toCheck: Tuple[Rotation, Rotation] = (-1, 2)
+                #
+                # rotation = -1
+                #
+                # tmpBest = collisions[0]
+                #
+                # tryAnother = False
+                #
+                # if bend(node, parent, rotation):
+                #     currentCollisions = countCollisions(node)
+                #
+                #     if currentCollisions == 0:
+                #         collisions[0] -= collisions[0] - currentCollisions
+                #         return True  # Done
+                #     elif currentCollisions < tmpBest:
+                #         tmpBest = currentCollisions
+                #
+                #     else:
+                #         rotation = 2
 
                 while not didUntangle and (rotation < 2):
                     if rotation != 0 and bend(node, parent, rotation):
