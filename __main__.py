@@ -124,6 +124,8 @@ class Application:
         # Load modules
         self.font = self.pygame.font.SysFont("Comic Sans MS", 50)
 
+        self.engine.setDrawer(self.draw)
+
     def handle_events(self) -> None:
         rotation: int = 0
         for event in self.pygame.event.get():
@@ -165,7 +167,7 @@ class Application:
                     self.engine.insert()
                 elif event.key == pygame.K_v:  # Lock current Node
                     self.engine.untangle()
-                elif event.key == pygame.K_m:  # Prune
+                elif event.key == pygame.K_p:  # Prune
                     self.engine.prune()
                 elif event.key == pygame.K_c:
                     global settings
@@ -220,9 +222,7 @@ class Application:
                     self.can_draw = True
 
         if moveable:
-            rotation: int = 1 * (keys[pygame.K_p] or keys[pygame.K_e]) - 1 * (
-                keys[pygame.K_o] or keys[pygame.K_q]
-            )
+            rotation: int = 1 * (keys[pygame.K_e]) - 1 * (keys[pygame.K_q])
             if rotation:
                 if self.engine.tryRotate(rotation):
                     self.can_draw = True
