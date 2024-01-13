@@ -469,6 +469,25 @@ def DFSWithCallback(
     return False
 
 
+def DFSWithCallbackAfter(
+    node: Node,
+    parent: Node,
+    visited: List[Node],
+    f: Callable[..., bool],
+    args: Dict[Any, Any],
+) -> bool:
+    visited.append(node)
+    for neighbor in node.values():
+        if neighbor not in visited:
+            if DFSWithCallbackAfter(neighbor, node, visited, f, args):
+                return True
+
+    if node == parent:
+        return False
+
+    return f(node, parent, args)
+
+
 def DFSWithCallbackAndPosition(
     node: Node,
     position: Position,
@@ -748,6 +767,9 @@ class Engine:
 
         self.update()
 
+    def setDrawer(self, f: Callable[..., None]) -> None:
+        self.drawer = f
+
     def search(self, node: Node) -> List[Node]:
         """Search for a Node in the network
 
@@ -979,10 +1001,17 @@ class Engine:
         """
         if self.mode == EngineMode.READ_ONLY:
             return False
-
+        previousCollisions: int = countCollisions(self.node)
         if not bend(self.node, self.previous, rotation):
             # return False
             rotateAll(self.node, rotation)
+
+        else:
+            if countCollisions(self.node) > previousCollisions:
+                if self.mode != EngineMode.LIMINAL:
+                    bend(self.node, self.previous, -rotation)
+
+                    print("You can only bend with collisions in LIMINAL mode")
 
         self.update()
 
@@ -1037,7 +1066,7 @@ class Engine:
 
         return flattened
 
-    def untangle(self) -> bool:
+    def _untangle(self) -> bool:
         """Naive untanglement where backtracking is used together with DFS to
         bend around the network until no further collisions are present. This
         algorithm is not fully optimized but a POC that is actually able to
@@ -1154,6 +1183,264 @@ class Engine:
             # space, it is up to the user to fix collisions. This required deletions
             # of Nodes. I am not sure if this is a global error or if it can be
             # mitigated by simply going to a different node
+            print(
+                "Absolute-space error. Cannot perform automatic untanglement. User intervention is required!"
+            )
+
+        self.update()
+
+        return True
+
+    def drawState(self):
+        self.update()
+        self.drawer()
+
+    def untangle(self) -> bool:
+        """Naive untanglement where backtracking is used together with DFS to
+        bend around the network until no further collisions are present. This
+        algorithm is not fully optimized but a POC that is actually able to
+        untangle some networks using trial and error. This algorithm is
+        destructive by rotating the network, but no Nodes are:
+
+        * Connected
+        * Disconnected
+        * Removed
+        * Added
+
+        Maybe the user wants to reconnect the network after the untanglement to
+        fix new neighbors and remove redundant nodes?
+
+        :return: status
+        """
+        if self.mode == EngineMode.READ_ONLY:
+            return False
+
+        collisions: int = countCollisions(self.node)  # This function costs a lot
+
+        if collisions == 0:
+            print("Nothing to untangle :)")
+            return False
+
+        def rectifier(node: Node, parent: Node, args):
+            parentDirection: Direction | None = parent.directionTo(node)
+
+            if parentDirection is None:  # This happens in directed graphs
+                print("This should not happen")
+                return False
+
+            n_neighbors: int = len(node)
+
+            if n_neighbors not in (0, ALL_DIRECTIONS - 1):
+                didUntangle: bool = False
+
+                tmpBest = args["collisions"]
+
+                if bend(node, parent, -1):
+                    currentCollisions = countCollisions(node)
+                    if currentCollisions < tmpBest:
+                        tmpBest = currentCollisions
+                        didUntangle = True
+                    # elif currentCollisions > tmpBest:
+                    #     bend()
+
+                    if bend(node, parent, 2):
+                        currentCollisions = countCollisions(node)
+                        if currentCollisions < tmpBest:
+                            tmpBest = currentCollisions  # Done
+                        elif didUntangle and (currentCollisions > tmpBest):
+                            bend(node, parent, -2)  # Undo :/
+                        else:
+                            bend(node, parent, -1)
+                    else:
+                        if not didUntangle:
+                            bend(node, parent, 1)
+
+                else:  # Test only the other rotation
+                    if bend(node, parent, 1):
+                        currentCollisions = countCollisions(node)
+                        if currentCollisions < tmpBest:
+                            tmpBest = currentCollisions  # Done
+
+                        else:
+                            bend(node, parent, -1)
+
+                if tmpBest < args["collisions"]:
+                    args["collisions"] = tmpBest
+                    args["draw"]()
+                    import time
+
+                    time.sleep(0.3)
+
+                return args["collisions"] == 0
+
+            return False
+
+        args = {"collisions": collisions, "draw": self.drawState}
+
+        aNode: Node = self.node
+
+        for i in range(10):
+            previousCollisionCount: int = args["collisions"]
+            done: bool = DFSWithCallbackAfter(aNode, aNode, [], rectifier, args)
+
+            if done:
+                print("Fully converted to absolute space")
+                break
+            elif args["collisions"] < previousCollisionCount:
+                print("making progress")
+            else:  # This is bad
+                print("Unable to convert to absolute space")
+                break
+        self.update()
+
+        return True
+        errorCount = 0
+
+        # print(collisions)
+        collisionCount = [collisions]
+
+        tested: List[Node] = []
+        print(args)
+
+        visited: List[Node] = []
+
+        while True and errorCount < 10:
+            visited = []
+            flattened: bool = DFSWithCallbackAfter(aNode, aNode, [], rectifier, args)
+            print(args)
+            break
+            # print(collisionCount[0])
+            if collisionCount[0] == 0:
+                print("Fully converted to absolute space!")
+                break
+
+            elif collisionCount[0] < collisions:
+                collisions = collisionCount[0]
+                print("Making progress")
+
+            elif (
+                not flattened and collisionCount[0] > 0
+            ):  # This is bad, the system cannot convert to 2D
+                # space, it is up to the user to fix collisions. This required deletions
+                # of Nodes. I am not sure if this is a global error or if it can be
+                # mitigated by simply going to a different node
+
+                tested.append(aNode)
+
+                neighbors = list(aNode.values())
+                for neighbor in neighbors:
+                    if neighbor not in tested:
+                        aNode = neighbor
+                errorCount += 1
+        if errorCount >= 10:
+            print(
+                "Absolute-space error. Cannot perform automatic untanglement. User intervention is required!"
+            )
+
+        self.update()
+
+        return True
+
+        def rec(node: Node, parent: Node, visited: List[Node], collisions: List[int]):
+            visited.append(node)
+            done: bool = False
+
+            for neighbor in node.values():
+                if neighbor not in visited:
+                    done = rec(neighbor, node, visited, collisions)
+                    if done:
+                        return True
+
+            if collisions[0] == 0:
+                return True
+
+            if node == parent:
+                return done
+            parentDirection: Direction | None = parent.directionTo(node)
+
+            if parentDirection is None:  # This happens in directed graphs
+                return done
+
+            n_neighbors: int = len(node)
+
+            if n_neighbors not in (0, ALL_DIRECTIONS - 1):
+                didUntangle: bool = False
+
+                tmpBest = collisions[0]
+
+                if bend(node, parent, -1):
+                    currentCollisions = countCollisions(node)
+                    if currentCollisions < tmpBest:
+                        tmpBest = currentCollisions
+                        didUntangle = True
+                    # elif currentCollisions > tmpBest:
+                    #     bend()
+
+                    if bend(node, parent, 2):
+                        currentCollisions = countCollisions(node)
+                        if currentCollisions < tmpBest:
+                            tmpBest = currentCollisions  # Done
+                        elif didUntangle and (currentCollisions > tmpBest):
+                            bend(node, parent, -2)  # Undo :/
+                        else:
+                            bend(node, parent, -1)
+                    else:
+                        if not didUntangle:
+                            bend(node, parent, 1)
+
+                else:  # Test only the other rotation
+                    if bend(node, parent, 1):
+                        currentCollisions = countCollisions(node)
+                        if currentCollisions < tmpBest:
+                            tmpBest = currentCollisions  # Done
+
+                        else:
+                            bend(node, parent, -1)
+
+                if tmpBest < collisions[0]:
+                    collisions[0] -= collisions[0] - tmpBest
+
+                if collisions[0] == 0:
+                    return True
+
+            return done
+
+        visited: List[Node] = []
+        # print(collisions)
+        collisionCount = [collisions]
+
+        aNode: Node = self.node
+        errorCount = 0
+
+        tested: List[Node] = []
+
+        while True and errorCount < 10:
+            visited = []
+            flattened: bool = rec(aNode, aNode, visited, collisionCount)
+            # print(collisionCount[0])
+            if collisionCount[0] == 0:
+                print("Fully converted to absolute space!")
+                break
+
+            elif collisionCount[0] < collisions:
+                collisions = collisionCount[0]
+                print("Making progress")
+
+            elif (
+                not flattened and collisionCount[0] > 0
+            ):  # This is bad, the system cannot convert to 2D
+                # space, it is up to the user to fix collisions. This required deletions
+                # of Nodes. I am not sure if this is a global error or if it can be
+                # mitigated by simply going to a different node
+
+                tested.append(aNode)
+
+                neighbors = list(aNode.values())
+                for neighbor in neighbors:
+                    if neighbor not in tested:
+                        aNode = neighbor
+                errorCount += 1
+        if errorCount >= 10:
             print(
                 "Absolute-space error. Cannot perform automatic untanglement. User intervention is required!"
             )
