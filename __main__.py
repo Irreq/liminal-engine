@@ -12,15 +12,23 @@ from typing import Generator, Callable, Dict, Tuple, Any, List, Set
 
 import pygame
 
-
+import math
 import time
 import subprocess
 
-from direction import MOVEMENT_MAP_INVERTED, Direction, Position
+from direction import MOVEMENT_MAP_INVERTED, Direction, Position, deltaPosition
 
 from node import ORIGO, Engine, EngineMode, Node, DFSWithPath
-from color import Color, RED, generate_color_map, settings, randomColorSettings
+from color import (
+    Color,
+    ColorManager,
+    randomColorSettings,
+)
 
+settings2 = randomColorSettings()
+
+gridColorManager = ColorManager(10)
+textColorManager = ColorManager(10, settings=randomColorSettings())
 # initiate pygame and give permission
 # to use pygame's functionality.
 pygame.init()
@@ -93,6 +101,14 @@ def create_file():
 #
 # time.sleep(3)
 # exit()
+font = pygame.font.SysFont("Comic Sans MS", 50)
+initial_key_repeat = pygame.key.get_repeat()
+writing_key_repeat = (200, 25)
+# Pygame now allows natively to enable key repeat:
+
+from pygame_textinput import TextInputManager, TextInputVisualizer
+
+manager = TextInputManager(validator=lambda input: len(input) <= 20)
 
 
 def engineToggleMode(engine: Engine, mode: EngineMode) -> None:
@@ -104,9 +120,9 @@ def engineToggleMode(engine: Engine, mode: EngineMode) -> None:
 
 class Application:
     def __init__(self, engine: Engine):
-        self.pygame = pygame
-        self.pygame.event.set_grab(True)  # Grab mouse
-        self.pygame.mouse.set_visible(False)
+        # pygame = pygame
+        pygame.event.set_grab(True)  # Grab mouse
+        pygame.mouse.set_visible(False)
         self.engine: Engine = engine
         self.running: bool = True
         self.find_home: bool = False
@@ -116,21 +132,48 @@ class Application:
         self.y: float = 0.0
         self.can_draw: bool = True
 
-        self.window = self.pygame.display.set_mode((X, Y))
-        self.rect = self.pygame.Rect(0, 0, TILE_SIZE, TILE_SIZE)
+        self.window = pygame.display.set_mode((X, Y))
+        self.rect = pygame.Rect(0, 0, TILE_SIZE, TILE_SIZE)
         self.rect.center = self.window.get_rect().center
         self.middleX = self.rect.center[0]
         self.middleY = self.rect.center[1]
         # Load modules
-        self.font = self.pygame.font.SysFont("Comic Sans MS", 50)
+        self.font = font
 
         self.engine.setDrawer(self.draw)
+        self.writer = False
+        self.ed = TextInputVisualizer(manager=manager, font_object=self.font)
 
     def handle_events(self) -> None:
-        rotation: int = 0
-        for event in self.pygame.event.get():
+        if self.writer:
+            self.handle_events_editor()
+        else:
+            self.handle_events_app()
+
+    def handle_events_editor(self) -> None:
+        events = pygame.event.get()
+
+        self.ed.update(events)
+        for event in events:
             if event.type == pygame.QUIT:
-                self.pygame.quit()
+                self.running = False
+            if event.type == pygame.KEYUP and event.key == pygame.K_RETURN:
+                pygame.key.set_repeat(*initial_key_repeat)
+                self.writer = False
+
+                if self.ed.value == "":
+                    self.engine.getNode().setData(None)
+                else:
+                    self.engine.getNode().setData(self.ed.value)
+
+        self.can_draw = True
+
+    def handle_events_app(self) -> None:
+        rotation: int = 0
+        # print(pygame.event.get())
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
                 self.running = False
 
             elif event.type == pygame.MOUSEWHEEL:  # Rotate
@@ -154,6 +197,14 @@ class Application:
                     engineToggleMode(self.engine, EngineMode.LIMINAL)
                 elif event.key == pygame.K_n:  # Toggle Normal Mode
                     engineToggleMode(self.engine, EngineMode.NORMAL)
+                elif event.key == pygame.K_RETURN:
+                    self.ed.value = self.engine.getNode().getData() or ""
+                    self.engine.getNode().setData(None)
+                    self.writer = True
+                    self.ed.font_color = self.colors2[-1]
+                    pygame.key.set_repeat(*writing_key_repeat)
+                    print("Change to write")
+                    return
 
                 elif event.key == pygame.K_SPACE:  # Lock current Node
                     if self.engine.getMode() != EngineMode.READ_ONLY:
@@ -170,16 +221,12 @@ class Application:
                 elif event.key == pygame.K_p:  # Prune
                     self.engine.prune()
                 elif event.key == pygame.K_c:
-                    global settings
+                    n: int = self.engine.getDepth() + 3
+                    gridColorManager.settings = randomColorSettings(n)
+                    self.colors = gridColorManager.computeRange(n)
 
-                    settings = randomColorSettings(self.engine.getDepth() + 3)
-                    # settings["hueBase"] += 0.01
-                    # settings["hueBase"] %= 1.0
-
-                    # settings["luminanceContrast"] = 1.0
-                    # settings["saturationBase"] = 1.0
-                    self.colors = generate_color_map("monochromatic", settings)
-                    print(settings)
+                    textColorManager.settings = randomColorSettings(n)
+                    self.colors2 = textColorManager.computeRange(n)
 
                 elif event.key == pygame.K_b:  # Lock current Node
                     self.engine.getNode().setData(self.engine.getNode().getId())
@@ -253,8 +300,10 @@ class Application:
         if amount != 0:
             self.engine.setDepth(amount)
             self.can_draw = True
-            settings["colorCount"] = amount + 3
-            self.colors = generate_color_map("monochromatic", settings)
+            n: int = self.engine.getDepth() + 3
+            self.colors = gridColorManager.computeRange(n)
+            self.colors2 = textColorManager.computeRange(n)
+
         up: bool = keys[pygame.K_UP] or keys[pygame.K_w]
         down: bool = keys[pygame.K_DOWN] or keys[pygame.K_s]
         left: bool = keys[pygame.K_LEFT] or keys[pygame.K_a]
@@ -266,7 +315,7 @@ class Application:
             my = -my
 
         if moveable:
-            self.pygame.mouse.set_visible(False)
+            pygame.mouse.set_visible(False)
             self.dy = 2 * (
                 self.delta_movement * up
                 - self.delta_movement * down
@@ -278,7 +327,7 @@ class Application:
                 + mx / MOUSE_SENSITIVITY
             )
         else:
-            self.pygame.mouse.set_visible(True)
+            pygame.mouse.set_visible(True)
             self.dx = 0
             self.dy = 0
 
@@ -322,7 +371,7 @@ class Application:
             if self.can_draw:
                 self.draw()
 
-        self.pygame.quit()
+        pygame.quit()
 
     @abstractmethod
     def draw(self) -> None:
@@ -332,8 +381,10 @@ class Application:
 class Writer(Application):
     def __init__(self, engine: Engine, width=100, height=10, fontname=None):
         super().__init__(engine)
-        settings["colorCount"] = engine.getDepth() + 3
-        self.colors = generate_color_map("monochromatic", settings)
+
+        n: int = self.engine.getDepth() + 3
+        self.colors = gridColorManager.computeRange(n)
+        self.colors2 = textColorManager.computeRange(n)
 
         # self.width = width
         # self.height = height
@@ -387,107 +438,134 @@ class Writer(Application):
             text_surface = self.font.render(text, False, self.colors[-1])  # TEXT_COLOR)
             self.window.blit(text_surface, (0, 0))
 
-        text_surface = self.font.render(
-            f"{round(self.clock.get_fps())}fps", False, self.colors[-1]
-        )  # TEXT_COLOR)
-        self.window.blit(text_surface, (X - 150, 0))
+        # text_surface = self.font.render(
+        #     f"{round(self.clock.get_fps())}fps", False, self.colors[-1]
+        # )  # TEXT_COLOR)
+        # self.window.blit(text_surface, (X - 150, 0))
 
         world: Dict[Position, Tuple[int, Node, Position]] = {}
 
         depth: int = self.engine.getDepth()
-        DFSWithPath(self.engine.getNode(), depth, world, ORIGO, ORIGO, [])
-
-        currentNode: Node = self.engine.getNode()
-        neighbors = list(currentNode.values())
-
-        locks = []
-        text = []
-
         size: int = self.size
-        # 0 <= n <= depth
-        for child, (n, node, parent) in world.items():
-            (x, y) = child
-            xc = x - kx
-            yc = y - ky
-            (x, y) = parent
 
-            xp = x - kx
-            yp = y - ky
+        maxDistance: float = (2 * depth**2) ** 0.5
 
-            ratio: float = (n + 1) / (depth + 1)  # 0.0 < ratio <= 1.0
+        def BFSDraw(start: Node):
+            to_visit: List[Tuple[Node, Position]] = [(start, ORIGO)]
 
-            if node in path and 0:
-                color = PATH_HOME_COLOR
-            else:
-                # c = ratio * 255
-                # color = (c, c, c)
-                color = self.colors[n + 2]
+            visited = []
 
-            currentPixelPosition = (self.middleX + xc * size, self.middleY - yc * size)
+            for i in range(depth):
+                nextVisit = []
 
-            width = int((ratio + 1) * size / MIN_SIZE) or 1
+                for node, position in to_visit:
+                    visited.append(node)
+                    for neighborDirection, neighbor in node.items():
+                        if neighbor not in visited:
+                            nextVisit.append(
+                                (neighbor, deltaPosition(neighborDirection, position))
+                            )
+
+                to_visit = nextVisit
+
+        def recDraw(
+            node: Node,
+            parent: Node,
+            n: int,
+            previousPosition: Position,
+            currentPosition: Position,
+            visited: List[Node],
+        ):
+            if n < 0:
+                return
+
+            # position: Position = (
+            #     self.middleX + (currentPosition[0] - kx) * size,
+            #     self.middleY - (currentPosition[1] - ky) * size,
+            # )
 
             if 1:
-                self.pygame.draw.circle(
-                    self.window,
-                    color,  # LOCKED_COLOR,
-                    currentPixelPosition,
-                    size // 2,  # width * 3,
+                distance: float = (
+                    math.dist(ORIGO, (currentPosition[0] - kx, currentPosition[1] - ky))
+                    / maxDistance
                 )
 
-            # if node in neighbors:
-            #     self.pygame.draw.circle(
-            #         self.window,
-            #         RED,  # LOCKED_COLOR,
-            #         currentPixelPosition,
-            #         size // 8,  # width * 3,
-            #     )
+                ratio = 0.9
 
-            if child != parent and node in path:
-                self.pygame.draw.line(
+                diff = 1 - ratio * distance - (1 - ratio) * (1 - n / depth)
+
+                # diff = ratio * (1 - distance - n / depth) + n / depth
+
+                if diff < 0:
+                    diff = 0
+            else:
+                diff = 1.0
+
+            deltaSize: float = size * diff
+
+            position: Position = (
+                self.middleX + (currentPosition[0] - kx) * deltaSize,
+                self.middleY - (currentPosition[1] - ky) * deltaSize,
+            )
+            for direction, neighbor in node.items():
+                if neighbor not in visited:
+                    recDraw(
+                        neighbor,
+                        node,
+                        n - 1,
+                        position,
+                        deltaPosition(direction, currentPosition),
+                        [node] + visited,
+                    )
+
+            if node != parent:
+                pygame.draw.line(
                     self.window,
-                    PATH_HOME_COLOR,  # color,
-                    currentPixelPosition,
-                    (self.middleX + xp * size, self.middleY - yp * size),
-                    width,
+                    self.colors[n + 2],  # color,
+                    position,
+                    previousPosition,
+                    int(deltaSize / 3),  # size // 8,
                 )
 
             if node.isLocked():
-                locks.append(currentPixelPosition)
+                pygame.draw.circle(
+                    self.window,
+                    self.colors[0],  # LOCKED_COLOR,
+                    position,
+                    deltaSize / 8,
+                )
 
-            # data: Any = node.getData()
-            # if data is not None:
-            #     text.append((data, currentPixelPosition))
-            # text.append((node.getId(), currentPixelPosition))
+            data: Any = node.getData()
+            if data is not None:
+                self.window.blit(
+                    self.font.render(
+                        data,
+                        False,
+                        self.colors2[n + 2],
+                    ),
+                    position,
+                )
 
-        for pos in locks:
-            self.pygame.draw.circle(
-                self.window,
-                self.colors[0],  # LOCKED_COLOR,
-                pos,
-                size / 8,
-            )
-        for c, pos in text:
+        startNode: Node = self.engine.getNode()
+
+        recDraw(startNode, startNode, depth, ORIGO, ORIGO, [])
+        if self.writer:
             self.window.blit(
-                self.font.render(
-                    str(c),
-                    False,
-                    RED,
-                ),
-                pos,
+                self.ed.surface,
+                (self.middleX - kx * size, self.middleY + ky * (size)),
             )
 
-        self.pygame.draw.circle(
+        pygame.draw.circle(
             self.window,
             CURSOR_COLOR,
             (self.middleX - POS_X, self.middleY - POS_Y),
             size / 20,
         )
-        self.pygame.display.flip()
+        pygame.display.flip()
 
 
 if __name__ == "__main__":
     engine = Engine(EngineMode.NORMAL, 16)
-    app = Writer(engine)  # Application(engine)
+    app = Writer(engine)
 
     app.loop()
