@@ -42,7 +42,6 @@ DEBUG: int = False
 SCREEN_AUTO_RESOLUTION: bool = False
 
 
-COLOR_PATH_HOME: Color = (0, 150, 255)
 COLOR_CURSOR: Color = (50, 50, 50)
 
 
@@ -50,7 +49,6 @@ SCREEN_TILE_SIZE: int = 50  # Pixel width
 
 FRAME_RATE: int = 60
 SPEED: int = 10  # How many tiles per second to travel
-START_DEPTH: int = 16
 DEPTH_MAX: int = 20
 DEPTH_MIN: int = 1
 EPSILON: float = 1e-4  # Prevent DivisionByZeroError
@@ -108,25 +106,27 @@ def create_file():
 # else:
 #     print("No file selected.")
 #
-# import time
-#
-# time.sleep(3)
-# exit()
+
 font = pygame.font.SysFont(TEXT_FONT_FAMILY, TEXT_FONT_SIZE)
 initial_key_repeat = pygame.key.get_repeat()
 writing_key_repeat = (200, 25)
-# Pygame now allows natively to enable key repeat:
 
 
-manager = TextInputManager(validator=lambda input: len(input) <= TEXT_MAX_WIDTH)
-
+manager = TextInputManager(validator=lambda inputText: len(inputText) <= TEXT_MAX_WIDTH)
 editor = TextInputVisualizer(manager=manager, font_object=font)
 
-colorManagerGrid = ColorManager(START_DEPTH)
-colorManagerText = ColorManager(START_DEPTH, settings=randomColorSettings())
+colorManagerGrid = ColorManager(DEPTH_MIN)
+colorManagerText = ColorManager(DEPTH_MIN, settings=randomColorSettings())
+
+clamp = lambda value, lower, upper: max(lower, min(value, upper))
 
 
-def engineToggleMode(engine: Engine, mode: EngineMode) -> None:
+def toggleEngineMode(engine: Engine, mode: EngineMode) -> None:
+    """Toggles mode for Engine between Normal and 'mode'
+
+    :param engine: Engine instance
+    :param mode: EngineMode
+    """
     if engine.getMode() == mode:
         mode = EngineMode.NORMAL
 
@@ -151,10 +151,16 @@ class Application:
         self.middleY = self.rect.center[1]
         # Load modules
 
-        self.engine.setDrawer(self.draw)
+        self.engine.setDrawer(self.render)
         self.writer = False
 
-    def changeDepth(self, depth: int):
+        self.clock = pygame.time.Clock()
+
+        n: int = self.engine.getDepth() + 3
+        self.colors = colorManagerGrid.computeRange(n)
+        self.colors2 = colorManagerText.computeRange(n)
+
+    def changeDepth(self, depth: int) -> None:
         self.engine.setDepth(depth)
         self.can_draw = True
         n: int = self.engine.getDepth() + 3
@@ -162,12 +168,14 @@ class Application:
         self.colors2 = colorManagerText.computeRange(n)
 
     def handle_events(self) -> None:
+        """Application-mode event distributor"""
         if self.writer:
             self.handle_events_editor()
         else:
             self.handle_events_app()
 
     def handle_events_editor(self) -> None:
+        """Event handler for text input"""
         events = pygame.event.get()
 
         for event in events:
@@ -192,10 +200,10 @@ class Application:
         self.can_draw = True
 
     def handle_events_app(self) -> None:
+        """General application event handling"""
         rotation: int = 0
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
                 self.running = False
 
             elif event.type == pygame.MOUSEWHEEL:  # Rotate
@@ -207,25 +215,24 @@ class Application:
                         self.engine.getNode().toggleLock()
 
                 elif pygame.mouse.get_pressed()[2]:  # Right click
-                    engineToggleMode(self.engine, EngineMode.LIMINAL)
+                    toggleEngineMode(self.engine, EngineMode.LIMINAL)
 
                 self.can_draw = True
 
             elif event.type == pygame.KEYUP:
                 draw = True
                 if event.key == pygame.K_r:  # Toggle Read-Only Mode
-                    engineToggleMode(self.engine, EngineMode.READ_ONLY)
+                    toggleEngineMode(self.engine, EngineMode.READ_ONLY)
                 elif event.key == pygame.K_l:  # Toggle Liminal Mode
-                    engineToggleMode(self.engine, EngineMode.LIMINAL)
+                    toggleEngineMode(self.engine, EngineMode.LIMINAL)
                 elif event.key == pygame.K_n:  # Toggle Normal Mode
-                    engineToggleMode(self.engine, EngineMode.NORMAL)
+                    toggleEngineMode(self.engine, EngineMode.NORMAL)
                 elif event.key == pygame.K_RETURN:
                     editor.value = self.engine.getNode().getData() or ""
                     self.engine.getNode().setData(None)
                     self.writer = True
                     editor.font_color = self.colors2[-1]
                     pygame.key.set_repeat(*writing_key_repeat)
-                    print("Change to write")
                     return
 
                 elif event.key == pygame.K_SPACE:  # Lock current Node
@@ -236,13 +243,13 @@ class Application:
                     return
                 elif event.key == pygame.K_h:
                     self.find_home = not self.find_home
-                elif event.key == pygame.K_i:  # Lock current Node
+                elif event.key == pygame.K_i:  # Insert new Node
                     self.engine.insert()
-                elif event.key == pygame.K_v:  # Lock current Node
+                elif event.key == pygame.K_v:  # Untangle graph (best effort)
                     self.engine.untangle()
                 elif event.key == pygame.K_p:  # Prune
                     self.engine.prune()
-                elif event.key == pygame.K_c:
+                elif event.key == pygame.K_c:  # Random color-theme
                     n: int = self.engine.getDepth() + 3
                     colorManagerGrid.settings = randomColorSettings(n)
                     self.colors = colorManagerGrid.computeRange(n)
@@ -250,8 +257,8 @@ class Application:
                     colorManagerText.settings = randomColorSettings(n)
                     self.colors2 = colorManagerText.computeRange(n)
 
-                elif event.key == pygame.K_b:  # Lock current Node
-                    self.engine.getNode().setData(self.engine.getNode().getId())
+                # elif event.key == pygame.K_b:  # Debugging purposes
+                #     self.engine.getNode().setData(self.engine.getNode().getId())
 
                 elif event.key == pygame.K_y:  # serialize program
                     path: str | None = create_file()
@@ -264,7 +271,7 @@ class Application:
                     if path is not None:
                         self.engine = Engine.deserialize(path)
 
-                elif event.key == pygame.K_t:  # serialize program
+                elif event.key == pygame.K_t:  # Straighten out graph optimization
                     self.engine.optimize()
                 else:
                     draw = False
@@ -278,22 +285,14 @@ class Application:
 
         if rotation:
             if keys[pygame.K_LCTRL]:
-                self.size += MOUSE_SENSITIVITY * rotation
-
-                if self.size < MIN_SIZE:
-                    self.size = MIN_SIZE
-                elif self.size > MAX_SIZE:
-                    self.size = MAX_SIZE
+                self.size = clamp(
+                    self.size + MOUSE_SENSITIVITY * rotation, MIN_SIZE, MAX_SIZE
+                )
 
             elif keys[pygame.K_LALT]:
                 depth: int = self.engine.getDepth()
 
-                depth += rotation
-
-                if depth < DEPTH_MIN:
-                    depth = DEPTH_MIN
-                elif depth > DEPTH_MAX:
-                    depth = DEPTH_MAX
+                depth = clamp(depth + rotation, DEPTH_MIN, DEPTH_MAX)
 
                 self.changeDepth(depth)
 
@@ -330,7 +329,6 @@ class Application:
             or 8 * keys[pygame.K_8]
             or 9 * keys[pygame.K_9]
         )
-        # amount = 0
 
         if amount != 0:
             self.changeDepth(amount)
@@ -340,22 +338,22 @@ class Application:
         left: bool = keys[pygame.K_LEFT] or keys[pygame.K_a]
         right: bool = keys[pygame.K_RIGHT] or keys[pygame.K_d]
 
-        mx, my = pygame.mouse.get_rel()
+        mouseX, mouseY = pygame.mouse.get_rel()
 
         if INVERTED_SCROLL:
-            my = -my
+            mouseY = -mouseY
 
         if moveable:
             pygame.mouse.set_visible(False)
             self.dy = 2 * (
                 self.delta_movement * up
                 - self.delta_movement * down
-                + my / MOUSE_SENSITIVITY
+                + mouseY / MOUSE_SENSITIVITY
             )
             self.dx = 2 * (
                 self.delta_movement * right
                 - self.delta_movement * left
-                + mx / MOUSE_SENSITIVITY
+                + mouseX / MOUSE_SENSITIVITY
             )
         else:
             pygame.mouse.set_visible(True)
@@ -363,6 +361,8 @@ class Application:
             self.dy = 0
 
     def handle_movements(self):
+        """Movement logic above engine the engine is discrete so fluid motion is
+        translated to discrete steps."""
         if not self.dy and not self.dx:
             return
 
@@ -391,33 +391,24 @@ class Application:
         self.can_draw = True
 
     def loop(self) -> None:
-        self.clock = pygame.time.Clock()
-        self.draw()
+        """Main program loop"""
         while self.running:
             self.clock.tick(FRAME_RATE)
             self.delta_movement = SPEED / (self.clock.get_fps() + EPSILON)
-            self.can_draw = False  # Reset
             self.handle_events()
             self.handle_movements()
             if self.can_draw:
-                self.draw()
+                self.render()
+                self.can_draw = False
 
         pygame.quit()
 
-    @abstractmethod
-    def draw(self) -> None:
-        pass
+    def render(self) -> None:
+        """Render the scene and items on the grid
 
-
-class Writer(Application):
-    def __init__(self, engine: Engine, width=100, height=10, fontname=None):
-        super().__init__(engine)
-
-        n: int = self.engine.getDepth() + 3
-        self.colors = colorManagerGrid.computeRange(n)
-        self.colors2 = colorManagerText.computeRange(n)
-
-    def draw(self):
+        The cost of this function is vast as it traverses the network on each
+        redraw.
+        """
         if self.find_home:
             path: List[Node] = self.engine.search(self.engine.start)
         else:
@@ -426,18 +417,6 @@ class Writer(Application):
         self.window.fill(self.colors[0])
         dx: float = self.x / 2
         dy: float = self.y / 2
-
-        mode: EngineMode = self.engine.getMode()
-
-        if mode != EngineMode.NORMAL:
-            if mode == EngineMode.READ_ONLY:
-                text = "Read Only!"
-            elif mode == EngineMode.LIMINAL:
-                text = "Liminal Mode!"
-            else:
-                raise ValueError("Invalid mode: ", mode)
-            text_surface = font.render(text, False, self.colors[-1])  # TEXT_COLOR)
-            self.window.blit(text_surface, (0, 0))
 
         depth: int = self.engine.getDepth()
 
@@ -464,8 +443,8 @@ class Writer(Application):
                     - (1 - DEPTH_WARP_RATIO) * (1 - (depth - n) / DEPTH_MAX)
                 )
 
-                if diff < 0:  # Clamp negative
-                    diff = 0
+                diff = clamp(diff, 0, diff)
+
             else:
                 diff = 1.0
 
@@ -475,6 +454,7 @@ class Writer(Application):
                 self.middleX + (currentPosition[0] - dx) * deltaSize,
                 self.middleY - (currentPosition[1] - dy) * deltaSize,
             )
+
             for direction, neighbor in node.items():
                 if neighbor not in visited:
                     recDraw(
@@ -533,11 +513,25 @@ class Writer(Application):
             (self.middleX, self.middleY),
             self.size / 20,
         )
+
+        mode: EngineMode = self.engine.getMode()
+
+        if mode != EngineMode.NORMAL:
+            if mode == EngineMode.READ_ONLY:
+                text = "Read Only!"
+            elif mode == EngineMode.LIMINAL:
+                text = "Liminal Mode!"
+            else:
+                raise ValueError("Invalid mode: ", mode)
+            text_surface = font.render(text, False, self.colors[-1])  # TEXT_COLOR)
+            self.window.blit(text_surface, (0, 0))
+
         pygame.display.flip()
 
 
 if __name__ == "__main__":
-    engine = Engine(EngineMode.NORMAL, START_DEPTH)
-    app = Writer(engine)
+    depthStart: int = 15
+    engine = Engine(EngineMode.NORMAL, depthStart)
+    app = Application(engine)
 
     app.loop()
