@@ -6,7 +6,6 @@
 # Date: 10/12-2023
 # Version: 2.0
 from __future__ import annotations
-from abc import abstractmethod
 from typing import Generator, Callable, Dict, Tuple, Any, List, Set
 
 
@@ -37,40 +36,36 @@ pygame.event.set_grab(True)  # Grab mouse
 pygame.mouse.set_visible(False)
 
 # ---- Settings ----
-DEBUG: int = False
-
-SCREEN_AUTO_RESOLUTION: bool = False
-
+DEBUG: int = 0
 
 COLOR_CURSOR: Color = (50, 50, 50)
 
+SCREEN_AUTO_RESOLUTION: bool = False
+SCREEN_FRAME_RATE: int = 60  # How often to render the scene
+SCREEN_TILE_SIZE: int = 50  # Pixel width during start
 
-SCREEN_TILE_SIZE: int = 50  # Pixel width
+TIME_OUT_DURATION: float = 0.2  # Time waiting between events
 
-FRAME_RATE: int = 60
-SPEED: int = 10  # How many tiles per second to travel
-DEPTH_MAX: int = 20
-DEPTH_MIN: int = 1
+DEPTH_MAX: int = 20  # Max Manhattan distance
+DEPTH_MIN: int = 1  # Min Manhattan distance
 EPSILON: float = 1e-4  # Prevent DivisionByZeroError
-DISTANCE_MAX: float = (2 * DEPTH_MAX**2) ** 0.5
+DISTANCE_MAX: float = (2 * DEPTH_MAX**2) ** 0.5  # Hypothenuse length
 
 
-MOUSE_SENSITIVITY: int = 20
-TIME_OUT_DURATION: float = 0.2
+MOUSE_SENSITIVITY: int = 20  # Increment on each mouse movement
+MOUSE_INVERTED_SCROLL: bool = True  # If scroll wheel should invert
 
-INVERTED_SCROLL: bool = True
+TILE_SPEED: int = 10  # How many tiles per second to travel
+TILE_SIZE_MIN: int = 10  # How small a single tile may be
+TILE_SIZE_MAX: int = 200  # How large a single tile may be
 
-FIND_HOME: bool = False
-
-MIN_SIZE: int = 10  # in pixels
-MAX_SIZE: int = 200
-
-WARP: bool = True
+WARP: bool = True  # Warp 3D effect
 WARP_MAGIC_NUMBER: float = 1.0
-DEPTH_WARP_RATIO: float = 0.9  # How much to use distance over depth when warping
-TEXT_MAX_WIDTH: int = 20
+WARP_DEPTH_RATIO: float = 0.9  # How much to use distance over depth when warping
+
+TEXT_MAX_WIDTH: int = 20  # Number of character that a single tile may hold
 TEXT_FONT_FAMILY: str = pygame.font.get_default_font()
-TEXT_FONT_SIZE: int = 50
+TEXT_FONT_SIZE: int = 50  # Size of text
 
 if DEBUG:
     X: int = 800
@@ -107,17 +102,18 @@ def create_file():
 #     print("No file selected.")
 #
 
+# Set up font from constants
 font = pygame.font.SysFont(TEXT_FONT_FAMILY, TEXT_FONT_SIZE)
-initial_key_repeat = pygame.key.get_repeat()
-writing_key_repeat = (200, 25)
 
-
+# Text input for demo application
 manager = TextInputManager(validator=lambda inputText: len(inputText) <= TEXT_MAX_WIDTH)
 editor = TextInputVisualizer(manager=manager, font_object=font)
 
+# Set up color-ranges for smooth transitions
 colorManagerGrid = ColorManager(DEPTH_MIN)
 colorManagerText = ColorManager(DEPTH_MIN, settings=randomColorSettings())
 
+# Helper function for clamping a value
 clamp = lambda value, lower, upper: max(lower, min(value, upper))
 
 
@@ -134,7 +130,15 @@ def toggleEngineMode(engine: Engine, mode: EngineMode) -> None:
 
 
 class Application:
+    """Demo application for testing the capabillities of the engine and how the
+    nodes interact.
+    """
+
     def __init__(self, engine: Engine):
+        """Initiate an instance of the application (no more than one)
+
+        :param engine: your engine instance
+        """
         self.engine: Engine = engine
         self.running: bool = True
         self.find_home: bool = False
@@ -160,7 +164,15 @@ class Application:
         self.colors = colorManagerGrid.computeRange(n)
         self.colors2 = colorManagerText.computeRange(n)
 
+        self.initial_key_repeat = pygame.key.get_repeat()
+        self.writing_key_repeat = (200, 25)
+
     def changeDepth(self, depth: int) -> None:
+        """Wrapper function to update the state of the app while updating the
+        engine aswell.
+
+        :param depth: a value between DEPTH_MIN and DEPTH_MAX
+        """
         self.engine.setDepth(depth)
         self.can_draw = True
         n: int = self.engine.getDepth() + 3
@@ -185,7 +197,7 @@ class Application:
                 pygame.K_RETURN,
                 pygame.K_ESCAPE,
             ):
-                pygame.key.set_repeat(*initial_key_repeat)
+                pygame.key.set_repeat(*self.initial_key_repeat)
                 self.writer = False
 
                 if editor.value == "":
@@ -232,7 +244,7 @@ class Application:
                     self.engine.getNode().setData(None)
                     self.writer = True
                     editor.font_color = self.colors2[-1]
-                    pygame.key.set_repeat(*writing_key_repeat)
+                    pygame.key.set_repeat(*self.writing_key_repeat)
                     return
 
                 elif event.key == pygame.K_SPACE:  # Lock current Node
@@ -257,14 +269,10 @@ class Application:
                     colorManagerText.settings = randomColorSettings(n)
                     self.colors2 = colorManagerText.computeRange(n)
 
-                # elif event.key == pygame.K_b:  # Debugging purposes
-                #     self.engine.getNode().setData(self.engine.getNode().getId())
-
                 elif event.key == pygame.K_y:  # serialize program
                     path: str | None = create_file()
                     if path is not None:
                         Engine.serialize(self.engine, path)
-                    return
 
                 elif event.key == pygame.K_u:  # serialize program
                     path: str | None = browse_file()
@@ -273,6 +281,9 @@ class Application:
 
                 elif event.key == pygame.K_t:  # Straighten out graph optimization
                     self.engine.optimize()
+
+                # elif event.key == pygame.K_b:  # Debugging purposes
+                #     self.engine.getNode().setData(self.engine.getNode().getId())
                 else:
                     draw = False
 
@@ -286,7 +297,9 @@ class Application:
         if rotation:
             if keys[pygame.K_LCTRL]:
                 self.size = clamp(
-                    self.size + MOUSE_SENSITIVITY * rotation, MIN_SIZE, MAX_SIZE
+                    self.size + MOUSE_SENSITIVITY * rotation,
+                    TILE_SIZE_MIN,
+                    TILE_SIZE_MAX,
                 )
 
             elif keys[pygame.K_LALT]:
@@ -297,7 +310,7 @@ class Application:
                 self.changeDepth(depth)
 
             else:
-                if INVERTED_SCROLL:
+                if MOUSE_INVERTED_SCROLL:
                     rotation = -rotation
                 if self.engine.tryRotate(rotation):
                     self.can_draw = True
@@ -340,7 +353,7 @@ class Application:
 
         mouseX, mouseY = pygame.mouse.get_rel()
 
-        if INVERTED_SCROLL:
+        if MOUSE_INVERTED_SCROLL:
             mouseY = -mouseY
 
         if moveable:
@@ -393,8 +406,8 @@ class Application:
     def loop(self) -> None:
         """Main program loop"""
         while self.running:
-            self.clock.tick(FRAME_RATE)
-            self.delta_movement = SPEED / (self.clock.get_fps() + EPSILON)
+            self.clock.tick(SCREEN_FRAME_RATE)
+            self.delta_movement = TILE_SPEED / (self.clock.get_fps() + EPSILON)
             self.handle_events()
             self.handle_movements()
             if self.can_draw:
@@ -439,8 +452,8 @@ class Application:
 
                 diff = (
                     WARP_MAGIC_NUMBER
-                    - DEPTH_WARP_RATIO * distance
-                    - (1 - DEPTH_WARP_RATIO) * (1 - (depth - n) / DEPTH_MAX)
+                    - WARP_DEPTH_RATIO * distance
+                    - (1 - WARP_DEPTH_RATIO) * (1 - (depth - n) / DEPTH_MAX)
                 )
 
                 diff = clamp(diff, 0, diff)

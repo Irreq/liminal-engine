@@ -209,3 +209,18 @@ generate_color_map = generate_oklch
 
 # colors = generate_oklch("monochromatic", settings)
 # print(colors)
+
+
+class ColorManager:
+    def __init__(self, n: int, settings: Dict[str, Any] = settings):
+        self.n = n
+        self.settings = settings
+        self.colors: List[Color] = generate_color_map("monochromatic", self.settings)
+
+    def computeRange(self, n: int) -> List[Color]:
+        assert isinstance(n, int), "Must be an integer"
+        assert n > 0, "Must be an positive integer"
+        self.settings["colorCount"] = n
+        self.colors = generate_color_map("monochromatic", self.settings)
+
+        return self.colors

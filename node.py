@@ -308,6 +308,9 @@ class Node:
         if self.getId() == 0 or self.isLocked():
             return False
 
+        if self._data is not None:
+            return False
+
         return len(self) > 0
 
     def isConnected(self, direction: Direction, node: Node) -> bool:
@@ -571,6 +574,44 @@ def DFSWithPath(
                 deltaPosition(direction, currentPosition),
                 [node] + visited,
             )
+
+
+Line = Tuple[Position, Position]
+
+
+def DFStest(
+    node: Node,
+    parent: Node,
+    n: int,
+    previousPosition: Position,
+    currentPosition: Position,
+    visited: List[Node],
+    lineSpace={},  # Required acyclic graph
+) -> Dict[int, List[Line]]:
+    if n < 0:
+        return lineSpace
+
+    for direction, neighbor in node.items():
+        if neighbor not in visited:
+            lineSpace = DFStest(
+                neighbor,
+                node,
+                n - 1,
+                currentPosition,
+                deltaPosition(direction, currentPosition),
+                [node] + visited,
+                lineSpace=lineSpace,
+            )
+
+    if node == parent:
+        return lineSpace
+
+    if n not in lineSpace:
+        lineSpace[n] = []
+
+    lineSpace[n].append((previousPosition, currentPosition))
+
+    return lineSpace
 
 
 def relativeExplorer(
